@@ -1,9 +1,12 @@
+from colorama import init, Fore
 from PIL import Image, ImageDraw, ImageFont
 from scipy.cluster.vq import kmeans
 from scipy.spatial import KDTree
+from tqdm import tqdm
 import numpy as np
 import os
 
+init(autoreset=True)
 Image.MAX_IMAGE_PIXELS = None
 
 def abrir_imagen(ruta_imagen):
@@ -15,16 +18,12 @@ def abrir_imagen(ruta_imagen):
     else:
         return imagen
 
-def redimensionar_imagen(ruta_imagen_original, ruta_imagen_nueva):
-    imagen_original = Image.open(ruta_imagen_original)
-    ancho = imagen_original.width
-    imagen_nueva = Image.open(ruta_imagen_nueva)
-    imagen_redimensionada = imagen_nueva.resize((ancho, round(ancho / (imagen_nueva.width / imagen_nueva.height))))
+def redimensionar_imagen(ancho, imagen_original, ruta_imagen_redimensionada):
+    imagen_redimensionada = imagen_original.resize((ancho, round(ancho / (imagen_original.width / imagen_original.height))))
     imagen_redimensionada = imagen_redimensionada.convert("RGB")
-    imagen_redimensionada.save(ruta_imagen_nueva)
+    imagen_redimensionada.save(ruta_imagen_redimensionada)
 
-def obtener_colores_representativos(ruta_imagen, k=80):
-    imagen = abrir_imagen(ruta_imagen)
+def obtener_colores_representativos(imagen, k):
     pixeles = np.array(imagen).reshape(-1, 3)
     pixeles = np.unique(pixeles, axis=0)
     k = min(len(pixeles), k)
@@ -36,20 +35,26 @@ def obtener_color_mas_cercano(pixel, colores):
     kdtree = KDTree(colores)
     return colores[kdtree.query(pixel)[1]]
 
-def recolorear_imagen(ruta_imagen_original, ruta_imagen_recoloreada, colores_representativos):
-    imagen_original = abrir_imagen(ruta_imagen_original)
+def recolorear_imagen(imagen_original, ruta_imagen_recoloreada, colores_representativos):
     pixeles_formateados = np.array(imagen_original)
     lista_pixeles = pixeles_formateados.tolist()
-    lista_pixeles_recoloreados = [[obtener_color_mas_cercano(pixel, colores_representativos) for pixel in fila] for fila in lista_pixeles]
+    print(Fore.YELLOW + "\nRecoloreando la imagen...")
+    lista_pixeles_recoloreados = [[obtener_color_mas_cercano(pixel, colores_representativos) for pixel in fila] for fila in tqdm(lista_pixeles, desc="Progreso de recoloración", unit="fila")]
     pixeles_recoloreados_formateados = np.array(lista_pixeles_recoloreados, dtype=np.uint8)
     imagen_recoloreada = Image.fromarray(pixeles_recoloreados_formateados)
     imagen_recoloreada.save(ruta_imagen_recoloreada)
+    print(Fore.GREEN + "\nSe generó y guardó la imagen recoloreada.")
+    return imagen_recoloreada
 
-def pixelar_imagen(ruta_imagen_original, ruta_imagen_pixelada):
-    imagen_original = abrir_imagen(ruta_imagen_original)
+def pixelar_imagen(imagen_original, ruta_imagen_pixelada):
     imagen_pequegna = imagen_original.resize((imagen_original.width // 20, imagen_original.height // 20), resample=Image.NEAREST)
     imagen_pixelada = imagen_pequegna.resize((imagen_original.width, imagen_original.height), resample=Image.NEAREST)
+    print(Fore.YELLOW + "\nPixelando la imagen...")
+    for i in tqdm(range(imagen_original.width), desc="Pixelado", unit="px"):
+        pass
     imagen_pixelada.save(ruta_imagen_pixelada)
+    print(Fore.GREEN + "\nSe generó y guardó la imagen pixelada.")
+    return imagen_pixelada
 
 def obtener_colores(lista_pixeles):
     lista_colores = []
@@ -59,8 +64,7 @@ def obtener_colores(lista_pixeles):
                 lista_colores.append(pixel)
     return lista_colores
 
-def obtener_numeros_colores(ruta_imagen):
-    imagen = abrir_imagen(ruta_imagen)
+def obtener_numeros_colores(imagen):
     pixeles = np.array(imagen)
     lista_colores = obtener_colores(pixeles.tolist())
     diccionario_colores = {}
@@ -81,8 +85,7 @@ def determinar_color_bloque(imagen, x, y, ancho, alto, colores):
     color_promedio = (suma_rojo // cantidad_pixeles, suma_verde // cantidad_pixeles, suma_azul // cantidad_pixeles)
     return obtener_color_mas_cercano(color_promedio, colores)
 
-def enumerar_colores(ruta_imagen_original, ruta_imagen_enumerada, diccionario_colores):
-    imagen_original = abrir_imagen(ruta_imagen_original)
+def enumerar_colores(imagen_original, ruta_imagen_enumerada, diccionario_colores):
     ancho, alto = imagen_original.size
     nuevo_ancho = ancho + ((20 - (ancho % 20)) % 20)
     nuevo_alto = round(nuevo_ancho / (ancho / alto)) + ((20 - (round(nuevo_ancho / (ancho / alto)) % 20)) % 20)
@@ -93,7 +96,8 @@ def enumerar_colores(ruta_imagen_original, ruta_imagen_enumerada, diccionario_co
         fuente = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
     except IOError:
         fuente = ImageFont.load_default()
-    for y in range(0, nuevo_alto, 20):
+    print(Fore.YELLOW + "\nEnumerando los colores...")
+    for y in tqdm(range(0, nuevo_alto, 20), desc="Progreso de enumeración", unit="bloque"):
         for x in range(0, nuevo_ancho, 20):
             color_bloque = determinar_color_bloque(imagen_aumentada, x, y, nuevo_ancho, nuevo_alto, list(diccionario_colores.values()))
             numero_correspondiente = next((k for k, v in diccionario_colores.items() if v == color_bloque), None)
@@ -104,6 +108,8 @@ def enumerar_colores(ruta_imagen_original, ruta_imagen_enumerada, diccionario_co
             draw.text(posicion_texto, numero_correspondiente, font=fuente, fill=(0, 0, 0))
             draw.rectangle([x, y, x + 19, y + 19], outline=(0, 0, 0), width=1)
     imagen_enumerada.save(ruta_imagen_enumerada)
+    print(Fore.GREEN + "\nSe generó y guardó la imagen enumerada.")
+    return imagen_enumerada
 
 def generar_paleta(ruta_imagen, diccionario_colores):
     numeros = list(diccionario_colores.keys())
@@ -117,8 +123,9 @@ def generar_paleta(ruta_imagen, diccionario_colores):
         fuente = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
     except IOError:
         fuente = ImageFont.load_default()
+    print(Fore.YELLOW + "\nGenerando la paleta de colores...")
     i = 0
-    for fila in range(filas):
+    for fila in tqdm(range(filas), desc="Progreso de generación de la paleta", unit="fila"):
         for columna in range(5):
             x0 = columna * 50
             y0 = fila * 50
@@ -136,36 +143,31 @@ def generar_paleta(ruta_imagen, diccionario_colores):
                 i += 1
     ruta_paleta_colores = f"{os.path.dirname(ruta_imagen)}/paleta_{os.path.splitext(os.path.basename(ruta_imagen))[0]}.png"
     imagen.save(ruta_paleta_colores)
+    print(Fore.GREEN + "\nSe generó y guardó como imagen la paleta de colores con su respectivo número.")
 
 def main():
-    # try:
-    sistema = os.name
-    if sistema == "nt":
-        os.system("cls")
-    else:
-        os.system("clear")
-    ruta_imagen_original = input("Ingrese la ruta absoluta de la imagen: ")
-    colores_representativos = obtener_colores_representativos(ruta_imagen_original)
-    directorio_imagen = os.path.dirname(ruta_imagen_original)
-    nombre_imagen_recoloreada = input("\nIngrese el nombre para la imagen recoloreada: ")
-    ruta_imagen_recoloreada = f"{directorio_imagen}/{nombre_imagen_recoloreada}.png"
-    recolorear_imagen(ruta_imagen_original, ruta_imagen_recoloreada, colores_representativos)
-    nombre_imagen_pixelada = input("\nIngrese el nombre para la imagen pixelada: ")
-    ruta_imagen_pixelada = f"{directorio_imagen}/{nombre_imagen_pixelada}.png"
-    pixelar_imagen(ruta_imagen_recoloreada, ruta_imagen_pixelada)
-    diccionario_colores = obtener_numeros_colores(ruta_imagen_pixelada)
-    nombre_imagen_enumerada = input("\nIngrese el nombre para la imagen enumerada: ")
-    ruta_imagen_enumerada = f"{directorio_imagen}/{nombre_imagen_enumerada}.png"
-    enumerar_colores(ruta_imagen_pixelada, ruta_imagen_enumerada, diccionario_colores)
-    generar_paleta(ruta_imagen_enumerada, diccionario_colores)
-    redimensionar_imagen(ruta_imagen_original, ruta_imagen_recoloreada)
-    redimensionar_imagen(ruta_imagen_original, ruta_imagen_pixelada)
-    redimensionar_imagen(ruta_imagen_original, ruta_imagen_enumerada)
-    print()
-    # except FileNotFoundError:
-    #     print("Error: La imagen no fue encontrada. Verifica la ruta e inténtalo nuevamente.")
-    # except Exception as e:
-    #     print(f"Error inesperado: {e}")
+    try:
+        ruta_imagen_original = input("\nIngrese la ruta absoluta de la imagen: ")
+        imagen_redimensionada = abrir_imagen(ruta_imagen_original)
+        colores_representativos = obtener_colores_representativos(imagen_redimensionada, 10)
+        directorio_imagen_original = os.path.dirname(ruta_imagen_original)
+        nombre_imagen_original = os.path.splitext(os.path.basename(ruta_imagen_original))[0]
+        ruta_imagen_recoloreada = f"{directorio_imagen_original}/{nombre_imagen_original}_recoloreada.png"
+        imagen_recoloreada = recolorear_imagen(imagen_redimensionada, ruta_imagen_recoloreada, colores_representativos)
+        ruta_imagen_pixelada = f"{directorio_imagen_original}/{nombre_imagen_original}_pixelada.png"
+        imagen_pixelada = pixelar_imagen(imagen_recoloreada, ruta_imagen_pixelada)
+        diccionario_colores = obtener_numeros_colores(imagen_pixelada)
+        ruta_imagen_enumerada = f"{directorio_imagen_original}/{nombre_imagen_original}_enumerada.png"
+        imagen_enumerada = enumerar_colores(imagen_pixelada, ruta_imagen_enumerada, diccionario_colores)
+        generar_paleta(ruta_imagen_enumerada, diccionario_colores)
+        imagen_original = Image.open(ruta_imagen_original).convert("RGB")
+        ancho = imagen_original.width
+        redimensionar_imagen(ancho, imagen_recoloreada, ruta_imagen_recoloreada)
+        redimensionar_imagen(ancho, imagen_pixelada, ruta_imagen_pixelada)
+        redimensionar_imagen(ancho, imagen_enumerada, ruta_imagen_enumerada)
+        print(Fore.GREEN + "\n¡Todo el proceso ha finalizado correctamente!\n")
+    except Exception as e:
+        print(Fore.RED + f"\nHubo un error: {e}\n")
 
 if __name__ == "__main__":
     main()
